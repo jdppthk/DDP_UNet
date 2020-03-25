@@ -1,9 +1,10 @@
 #!/bin/bash -l
 #SBATCH --nodes=1  --time=04:00:00  
 #SBATCH -C gpu 
-#SBATCH --gres=gpu:1
+#SBATCH --account m1759
+#SBATCH --gres=gpu:8
 #SBATCH --exclusive
-#SBATCH -c 10
+#SBATCH -c 80
 #SBATCH -J single
 #SBATCH -o %x-%j.out
 
