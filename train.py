@@ -18,7 +18,8 @@ from utils import logging_utils
 logging_utils.config_logger()
 from utils.YParams import YParams
 from utils.data_loader import get_data_loader_distributed
-from utils.plotting import generate_images, meanL1
+from utils.data_loader import get_data_loader_distributed_test
+from utils.plotting import plot_gens_tars
 from networks import UNet
 
 def adjust_LR(optimizer, params, iternum):
@@ -39,6 +40,7 @@ def adjust_LR(optimizer, params, iternum):
 def train(params, args, world_rank):
   logging.info('rank %d, begin data loader init'%world_rank)
   train_data_loader = get_data_loader_distributed(params, world_rank)
+  test_data_loader = get_data_loader_distributed_test(params, world_rank)
   logging.info('rank %d, data loader initialized'%world_rank)
   model = UNet.UNet(params).cuda()
   if not args.resuming:
@@ -82,6 +84,7 @@ def train(params, args, world_rank):
       gen = model(inp)
       loss = UNet.loss_func(gen, tar, params)
       
+      
       loss.backward() # fixed precision
 
       # automatic mixed precision:
@@ -100,8 +103,8 @@ def train(params, args, world_rank):
       gens = []
       tars = []
       with torch.no_grad():
-        for i, data in enumerate(train_data_loader, 0):
-          if i>=16:
+        for i, data in enumerate(test_data_loader, 0):
+          if i>=50:
             break
           inp, tar = map(lambda x: x.to(device), data)
           gen = model(inp)
@@ -114,19 +117,22 @@ def train(params, args, world_rank):
       args.tboard_writer.add_scalar('G_loss', loss.item(), iters)
 
       # Plots
-      fig, chi, L1score = meanL1(gens, tars)
-      args.tboard_writer.add_figure('pixhist', fig, iters, close=True)
-      args.tboard_writer.add_scalar('Metrics/chi', chi, iters)
-      args.tboard_writer.add_scalar('Metrics/rhoL1', L1score[0], iters)
-      args.tboard_writer.add_scalar('Metrics/vxL1', L1score[1], iters)
-      args.tboard_writer.add_scalar('Metrics/vyL1', L1score[2], iters)
-      args.tboard_writer.add_scalar('Metrics/vzL1', L1score[3], iters)
-      args.tboard_writer.add_scalar('Metrics/TL1', L1score[4], iters)
-      
-      fig = generate_images(inp.detach().cpu().numpy()[0], gens[-1], tars[-1])
-      args.tboard_writer.add_figure('genimg', fig, iters, close=True)
-      log_end = time.time()
-      log_time += log_end - log_start
+      fig = plot_gens_tars(gens, tars)
+      #fig, chi, L1score = meanL1(gens, tars)
+      #args.tboard_writer.add_figure('pixhist', fig, iters, close=True)
+      #args.tboard_writer.add_scalar('Metrics/chi', chi, iters)
+      #args.tboard_writer.add_scalar('Metrics/rhoL1', L1score[0], iters)
+      #args.tboard_writer.add_scalar('Metrics/vxL1', L1score[1], iters)
+      #args.tboard_writer.add_scalar('Metrics/vyL1', L1score[2], iters)
+      #args.tboard_writer.add_scalar('Metrics/vzL1', L1score[3], iters)
+      #args.tboard_writer.add_scalar('Metrics/TL1', L1score[4], iters)
+      #
+      #fig = generate_images(inp.detach().cpu().numpy()[0], gens[-1], tars[-1])
+      for figiter in range(5):
+        figtag = 'test' + str(figiter)
+        args.tboard_writer.add_figure(tag = figtag, figure = fig[figiter], close=True)
+      #log_end = time.time()
+      #log_time += log_end - log_start
 
       # Save checkpoint
       torch.save({'iters': iters, 'epoch':epoch, 'model_state': model.state_dict(), 
@@ -172,6 +178,7 @@ if __name__ == '__main__':
   print(os.getcwd())
   baseDir = './expts/'
   expDir = os.path.join(baseDir, args.config+'/'+str(run_num)+'/')
+  print(expDir)
   if  world_rank==0:
     if not os.path.isdir(expDir):
       os.mkdir(expDir)
